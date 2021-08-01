@@ -6,136 +6,6 @@
 
 using namespace std;
 
-typedef uint64_t BinaryFunction;
-
-template<int VariableCount>
-struct FunctionNode {
-    enum struct Origin {
-        UNION,
-        INVERTION
-    };
-    BinaryFunction func;
-    FunctionNode* parent;
-    Origin origin;
-    vector<FunctionNode*> childs;
-    FunctionNode(BinaryFunction func, FunctionNode* parent, Origin origin) : 
-            func(func), parent(parent), origin(origin) {
-        if (parent) {
-            parent->childs.push_back(this);
-        }
-    }
-    friend ostream& operator<<(ostream& os, const FunctionNode<VariableCount>& node) {
-        os << ((node.origin == Origin::UNION) ? 'U' : 'I');
-        for (int i = (1 << VariableCount) - 1; i >= 0; i--) {
-            os << (int(node.func >> i) & 1);
-        }
-        return os;
-    }
-};
-
-template<int VariableCount>
-FunctionNode<VariableCount>* find(FunctionNode<VariableCount>* end, BinaryFunction func) {
-    while (end) {
-        if (end->func == func) {
-            return end;
-        }
-        end = end->parent;
-    }
-    return 0;
-}
-
-template<int VariableCount>
-BinaryFunction get_mask() {
-    BinaryFunction mask = 0;
-    for (int i = 0; i < 1 << VariableCount; i++) {
-        mask <<= 1;
-        mask |= 1;
-    }
-    return mask;
-}
-
-template<int VariableCount>
-bool _tryInvertion(FunctionNode<VariableCount>*& end, BinaryFunction value) {
-    BinaryFunction val = (~value) & get_mask<VariableCount>();
-    if (find(end, val) == 0) {
-        auto temp = new FunctionNode<VariableCount>(val, end, FunctionNode<VariableCount>::Origin::INVERTION);
-        end = temp;
-        return true;
-    } else {
-        return false;
-    }
-
-}
-template<int VariableCount>
-bool _tryUnion(FunctionNode<VariableCount>*& end, BinaryFunction left, BinaryFunction right) {
-    BinaryFunction val = left | right;
-    if (find(end, val) == 0) {
-        auto temp = new FunctionNode<VariableCount>(val, end, FunctionNode<VariableCount>::Origin::UNION);
-        end = temp;
-        return true;
-    } else {
-        return false;
-    }
-}
-static int counter = 0;
-template<int VariableCount>
-void _generateBinFuncTree(FunctionNode<VariableCount>* unionBegin,
-                          FunctionNode<VariableCount>* invertionBegin, 
-                          FunctionNode<VariableCount>* end) {
-    counter++;
-    if (counter % 10 == 0) {
-        cout << '@' << counter << endl;
-    }
-    list<FunctionNode<VariableCount>*> stack;
-    for (auto head = end; head != unionBegin; head = head->parent) {
-        stack.push_front(head);
-    }
-    stack.push_front(unionBegin);
-    for (auto head = stack.begin(); head != stack.end(); head++) {
-        auto head2 = head;
-        head2++;
-        for (; head2 != stack.end(); head2++) {
-            if (_tryUnion(end, (*head)->func, (*head2)->func)) {
-                stack.push_back(end);
-            }
-        }
-    }
-    auto head = stack.begin();
-    while (*head != invertionBegin) {
-        head++;
-    }
-    for (; head != stack.end(); head++) {
-        auto temp = end;
-        if (_tryInvertion(temp, (*head)->func)) {
-            _generateBinFuncTree(unionBegin, *head, temp);
-        }
-    }
-    
-}
-
-template<int VariableCount>
-FunctionNode<VariableCount>* generateBinFuncTree() {
-    constexpr int N = VariableCount;
-    auto root = new FunctionNode<VariableCount>(0, nullptr, FunctionNode<VariableCount>::Origin::UNION);
-    auto head = root;
-    head = new FunctionNode<VariableCount>((~0) & get_mask<VariableCount>(), head, FunctionNode<VariableCount>::Origin::UNION);
-
-
-    for (int i = 0; i < N; i++) {
-        BinaryFunction func = 0;
-        for (int j = 0; j < 1 << N; j++) {
-            if (j & (1 << i)) {
-                func = func | (BinaryFunction(1) << j);
-            }
-        }
-        head = new FunctionNode<VariableCount>(func, head, FunctionNode<VariableCount>::Origin::UNION);
-    }
-    _generateBinFuncTree(root, root, head);
-
-
-    return root;
-}
-
 class VerticalPrint {
     vector<stringstream> arr;
     vector<char> filler;
@@ -199,74 +69,266 @@ public:
 
 };
 
+
 template<int VariableCount>
-void printBinFuncTree(FunctionNode<VariableCount>* node) {
-    VerticalPrint vp;
-    list<pair<FunctionNode<VariableCount>*, size_t>> stack;
-
-    auto head = node;
-    while (true) {
-        while (head) {
-            vp.addsafe(stack.size(), *head);
-            vp.addsafe(stack.size(), vp.getfiller(stack.size()));
-            if (head->childs.size() > 0) {
-                if (head->childs.size() > 1) {
-                    vp.setfiller(stack.size() + 1, '-');
-                } else {
-                    vp.setfiller(stack.size() + 1, ' ');
-                }
-                stack.push_back(make_pair(head, 1));
-                head = head->childs[0];
-            } else {
-                head = nullptr;
+class BinaryFuncTree {
+    template<class T>
+    struct container_wrapper {
+    private:
+        vector<T> arr;
+    public:
+        struct iterator {
+        private:
+            vector<T>* arr;
+            int index;
+        public:
+            iterator() : arr(0), index(0) {}
+            iterator(vector<T>* arr, int index) : arr(arr), index(index) {}
+            T& operator*() const {
+                return (*arr)[index];
             }
-        }
-        vp.endvline();
-
-        while (!stack.empty()) {
-            auto &t = stack.back();
-            if (t.first->childs.size() > t.second) {
-                if (t.first->childs.size() - t.second > 1) {
-                    vp.setfiller(stack.size(), '-');
-                } else {
-                    vp.setfiller(stack.size(), ' ');
-                }
-                head = t.first->childs[t.second];
-                t.second++;
-                break;
-            } else {
-                vp.setfiller(stack.size(), ' ');
-                stack.pop_back();
+            T* operator->() const {
+                return &(*arr)[index];
             }
+            iterator operator+(int a) const {
+                return iterator{ index + a };
+            }
+            iterator operator-(int a) const {
+                return iterator{ index - a };
+            }
+            bool operator==(const iterator &it) const {
+                return index == it.index;
+            }
+            operator bool() {
+                return arr != 0 && index >= 0 && index < arr->size();
+            }
+
+        };
+        iterator begin() {
+            return iterator(&arr, 0);
         }
-        if (stack.empty()) {
-            break;
+        iterator end() {
+            return iterator(&arr, arr.size());
+        }
+
+        template<class ...Args>
+        iterator alloc(Args&&... args) {
+            arr.emplace_back(args...);
+            return iterator(&arr, arr.size() - 1);
+        }
+
+    };
+
+
+private:
+    template<int VariableCount>
+    struct FunctionNode;
+    typedef uint64_t BinaryFunction;
+    using iterator = typename container_wrapper<FunctionNode<VariableCount>>::iterator;
+
+    container_wrapper<FunctionNode<VariableCount>> alloc_arr;
+    int counter = 0;
+
+    template<int VariableCount>
+    struct FunctionNode {
+        enum struct Origin {
+            UNION,
+            INVERTION
+        };
+        BinaryFunction func;
+        iterator parent;
+        Origin origin;
+        vector<iterator> childs;
+        FunctionNode(BinaryFunction func, iterator parent, Origin origin) :
+            func(func), parent(parent), origin(origin) {
+
+        }
+        FunctionNode(BinaryFunction func,  Origin origin) :
+            func(func), origin(origin) {
+        }
+        friend ostream& operator<<(ostream& os, const FunctionNode<VariableCount>& node) {
+            os << ((node.origin == Origin::UNION) ? 'U' : 'I');
+            for (int i = (1 << VariableCount) - 1; i >= 0; i--) {
+                os << (int(node.func >> i) & 1);
+            }
+            return os;
+        }
+    };
+
+    iterator _alloc(BinaryFunction func, iterator parent, FunctionNode<VariableCount>::Origin origin) {
+        auto it = alloc_arr.alloc(func, parent, origin);
+        parent->childs.push_back(it);
+        return it;
+    }
+
+    iterator _alloc(BinaryFunction func,  FunctionNode<VariableCount>::Origin origin) {
+        return alloc_arr.alloc(func, origin);
+    }
+
+    iterator* find(iterator end, BinaryFunction func) {
+        while (end) {
+            if (end->func == func) {
+                return &end;
+            }
+            end = end->parent;
+        }
+        return 0;
+    }
+
+    BinaryFunction get_mask() {
+        BinaryFunction mask = 0;
+        for (int i = 0; i < 1 << VariableCount; i++) {
+            mask <<= 1;
+            mask |= 1;
+        }
+        return mask;
+    }
+
+    bool _tryInvertion(iterator& end, BinaryFunction value) {
+        BinaryFunction val = (~value) & get_mask();
+        if (find(end, val) == 0) {
+            end = _alloc(val, end, FunctionNode<VariableCount>::Origin::INVERTION);
+            return true;
+        } else {
+            return false;
+        }
+
+    }
+    bool _tryUnion(iterator& end, BinaryFunction left, BinaryFunction right) {
+        BinaryFunction val = left | right;
+        if (find(end, val) == 0) {
+            end = _alloc(val, end, FunctionNode<VariableCount>::Origin::UNION);
+            return true;
+        } else {
+            return false;
         }
     }
-    vp.print();
-
-
-    /*stack.push_back(make_pair(node, 0));
-    
-    int depth = 0;
-    while (!stack.empty()) {
-        for (; !stack.empty();) {
-            auto head = stack.front();
-            if (head.second != depth) {
-                break;
-            } else {
-                cout << *head.first << " ";
-                for (const auto& v : head.first->childs) {
-                    stack.push_back(make_pair(v, depth + 1));
+    void _generateBinFuncTree(iterator unionBegin,
+                              iterator invertionBegin,
+                              iterator end) {
+        counter++;
+        if (counter % 10 == 0) {
+            cout << '@' << counter << endl;
+        }
+        list<iterator> stack;
+        for (auto head = end; head != unionBegin; head = head->parent) {
+            stack.push_front(head);
+        }
+        stack.push_front(unionBegin);
+        for (auto head = stack.begin(); head != stack.end(); head++) {
+            auto head2 = head;
+            head2++;
+            for (; head2 != stack.end(); head2++) {
+                if (_tryUnion(end, (*head)->func, (*head2)->func)) {
+                    stack.push_back(end);
                 }
             }
-            stack.pop_front();
         }
-        cout << endl;
-        depth++;
-    }*/
+        auto head = stack.begin();
+        while (*head != invertionBegin) {
+            head++;
+        }
+        for (; head != stack.end(); head++) {
+            auto temp = end;
+            if (_tryInvertion(temp, (*head)->func)) {
+                _generateBinFuncTree(unionBegin, *head, temp);
+            }
+        }
 
-}
+    }
+
+public:
+    iterator tree_root;
+    void generateBinFuncTree() {
+        constexpr int N = VariableCount;
+        auto root = _alloc(0, FunctionNode<VariableCount>::Origin::UNION);
+        auto head = root;
+        head = _alloc((~0) & get_mask(), head, FunctionNode<VariableCount>::Origin::UNION);
+
+
+        for (int i = 0; i < N; i++) {
+            BinaryFunction func = 0;
+            for (int j = 0; j < 1 << N; j++) {
+                if (j & (1 << i)) {
+                    func = func | (BinaryFunction(1) << j);
+                }
+            }
+            head = _alloc(func, head, FunctionNode<VariableCount>::Origin::UNION);
+        }
+        _generateBinFuncTree(root, root, head);
+        tree_root = root;
+    }
+
+    void printBinFuncTree() {
+        VerticalPrint vp;
+        list<pair<iterator, size_t>> stack;
+
+        auto head = tree_root;
+        while (true) {
+            while (true) {
+                vp.addsafe(stack.size(), *head);
+                vp.addsafe(stack.size(), vp.getfiller(stack.size()));
+                if (head->childs.size() > 0) {
+                    if (head->childs.size() > 1) {
+                        vp.setfiller(stack.size() + 1, '-');
+                    } else {
+                        vp.setfiller(stack.size() + 1, ' ');
+                    }
+                    stack.push_back(make_pair(head, 1));
+                    head = head->childs[0];
+                } else {
+                    break;
+                }
+            }
+            vp.endvline();
+
+            while (!stack.empty()) {
+                auto& t = stack.back();
+                if (t.first->childs.size() > t.second) {
+                    if (t.first->childs.size() - t.second > 1) {
+                        vp.setfiller(stack.size(), '-');
+                    } else {
+                        vp.setfiller(stack.size(), ' ');
+                    }
+                    head = t.first->childs[t.second];
+                    t.second++;
+                    break;
+                } else {
+                    vp.setfiller(stack.size(), ' ');
+                    stack.pop_back();
+                }
+            }
+            if (stack.empty()) {
+                break;
+            }
+        }
+        vp.print();
+
+
+        /*stack.push_back(make_pair(node, 0));
+
+        int depth = 0;
+        while (!stack.empty()) {
+            for (; !stack.empty();) {
+                auto head = stack.front();
+                if (head.second != depth) {
+                    break;
+                } else {
+                    cout << *head.first << " ";
+                    for (const auto& v : head.first->childs) {
+                        stack.push_back(make_pair(v, depth + 1));
+                    }
+                }
+                stack.pop_front();
+            }
+            cout << endl;
+            depth++;
+        }*/
+
+    }
+};
+
+
 
 void testVerticalPrint() {
     VerticalPrint vp;
@@ -282,11 +344,15 @@ void testVerticalPrint() {
     vp.add(2, "What??!!");
     vp.print();
 }
+struct pointer {
+    typename vector<int>::iterator iter;
+    bool is_valid;
 
+};
 int main() {
 
-    
-    auto tree = generateBinFuncTree<2>();
-    printBinFuncTree(tree);
+    BinaryFuncTree<3> bft;
+    bft.generateBinFuncTree();
+    bft.printBinFuncTree();
     return 0;
 }
