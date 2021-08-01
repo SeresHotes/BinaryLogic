@@ -84,22 +84,22 @@ class BinaryFuncTree {
         public:
             iterator() : arr(0), index(0) {}
             iterator(vector<T>* arr, int index) : arr(arr), index(index) {}
-            T& operator*() const {
+            T& operator*() const noexcept {
                 return (*arr)[index];
             }
-            T* operator->() const {
+            T* operator->() const noexcept {
                 return &(*arr)[index];
             }
-            iterator operator+(int a) const {
+            iterator operator+(int a) const noexcept  {
                 return iterator{ index + a };
             }
-            iterator operator-(int a) const {
+            iterator operator-(int a) const noexcept  {
                 return iterator{ index - a };
             }
-            bool operator==(const iterator &it) const {
+            bool operator==(const iterator &it) const noexcept {
                 return index == it.index;
             }
-            operator bool() {
+            operator bool() const noexcept {
                 return arr != 0 && index >= 0 && index < arr->size();
             }
 
@@ -127,7 +127,9 @@ private:
     using iterator = typename container_wrapper<FunctionNode<VariableCount>>::iterator;
 
     container_wrapper<FunctionNode<VariableCount>> alloc_arr;
+public:
     int counter = 0;
+private:
 
     template<int VariableCount>
     struct FunctionNode {
@@ -203,35 +205,45 @@ private:
             return false;
         }
     }
-    void _generateBinFuncTree(iterator unionBegin,
-                              iterator invertionBegin,
-                              iterator end) {
-        counter++;
-        if (counter % 10 == 0) {
-            cout << '@' << counter << endl;
-        }
-        list<iterator> stack;
-        for (auto head = end; head != unionBegin; head = head->parent) {
-            stack.push_front(head);
-        }
-        stack.push_front(unionBegin);
-        for (auto head = stack.begin(); head != stack.end(); head++) {
-            auto head2 = head;
-            head2++;
-            for (; head2 != stack.end(); head2++) {
-                if (_tryUnion(end, (*head)->func, (*head2)->func)) {
+
+    void _union_all(list<iterator>& stack,
+                    const typename list<iterator>::iterator& unionBegin) {
+        for (auto it = unionBegin; it != stack.end(); it++) {
+            for (auto it2 = std::next(it); it2 != stack.end(); it2++) {
+                auto end = stack.back();
+                if (_tryUnion(end, (*it)->func, (*it2)->func)) {
                     stack.push_back(end);
                 }
             }
         }
-        auto head = stack.begin();
-        while (*head != invertionBegin) {
-            head++;
+    }
+    void _union_last(list<iterator>& stack,
+                    const typename list<iterator>::iterator& unionBegin) {
+        auto& val = stack.back();
+        auto end = std::prev(stack.end());
+        for (auto it = unionBegin; it != end; it++) {
+            auto end = stack.back();
+            if (_tryUnion(end, (*it)->func, val->func)) {
+                stack.push_back(end);
+            }
         }
-        for (; head != stack.end(); head++) {
-            auto temp = end;
+    }
+
+
+    void _generateBinFuncTree(list<iterator> &stack,
+                              typename list<iterator>::iterator invertionBegin) {
+        counter++;
+        if (counter % 1000 == 0) {
+            cout << '@' << counter << endl;
+        }
+        auto old_end = std::prev(stack.end());
+        for (auto head = invertionBegin; head != stack.end(); head++) {
+            auto temp = stack.back();
             if (_tryInvertion(temp, (*head)->func)) {
-                _generateBinFuncTree(unionBegin, *head, temp);
+                stack.push_back(temp);
+                _union_last(stack, stack.begin());
+                _generateBinFuncTree(stack, head);
+                stack.erase(std::next(old_end), stack.end());
             }
         }
 
@@ -241,9 +253,13 @@ public:
     iterator tree_root;
     void generateBinFuncTree() {
         constexpr int N = VariableCount;
+        list<iterator> stack;
+
         auto root = _alloc(0, FunctionNode<VariableCount>::Origin::UNION);
         auto head = root;
+        stack.push_back(head);
         head = _alloc((~0) & get_mask(), head, FunctionNode<VariableCount>::Origin::UNION);
+        stack.push_back(head);
 
 
         for (int i = 0; i < N; i++) {
@@ -254,8 +270,11 @@ public:
                 }
             }
             head = _alloc(func, head, FunctionNode<VariableCount>::Origin::UNION);
+            stack.push_back(head);
         }
-        _generateBinFuncTree(root, root, head);
+        _union_all(stack, stack.begin());
+
+        _generateBinFuncTree(stack, stack.begin());
         tree_root = root;
     }
 
@@ -350,9 +369,9 @@ struct pointer {
 
 };
 int main() {
-
-    BinaryFuncTree<3> bft;
+    BinaryFuncTree<2> bft;
     bft.generateBinFuncTree();
     bft.printBinFuncTree();
+    cout << bft.counter << endl;
     return 0;
 }
