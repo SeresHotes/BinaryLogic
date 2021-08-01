@@ -3,15 +3,130 @@
 #include <cinttypes>
 #include <vector>
 #include <list>
+#include <fstream>
 
 using namespace std;
+
+typedef uint64_t BinaryFunction;
+
+template<class T, int VariableCount>
+class MyStack {
+private:
+    struct Node {
+        int index;
+        T val;
+        Node* prev;
+        Node* next;
+        bool is_valid;
+        Node(int index, T val, Node* prev, Node* next)
+            : index(index), val(val), prev(prev), next(next), is_valid(true) {
+
+        }
+        Node()
+            : index(0), val(), prev(0), next(0), is_valid(false){
+
+        }
+    };
+    constexpr static int size = 1 << (BinaryFunction(1) << VariableCount);
+    Node arr[size];
+
+    Node _end;
+    Node _rend;
+public:
+    MyStack() : _end(size, T(), &_rend, (Node*)0), _rend(size, T(), (Node*) 0, &_end) {
+
+    }
+    struct iterator {
+
+    public:
+        Node* node;
+        iterator() : node(0) {}
+        iterator(Node *node) : node(node) {}
+        T& operator*() const noexcept {
+            return node->val;
+        }
+        T* operator->() const noexcept {
+            return &node->val;
+        }
+        iterator& operator++() noexcept {
+            node = node->next;
+            return *this;
+        }
+        iterator& operator--() noexcept {
+            node = node->prev;
+            return *this;
+        }
+        bool operator==(const iterator& it) const noexcept {
+            return node == it.node;
+        }
+    };
+    iterator end()  {
+        iterator t = iterator(&_end);
+        return t;
+    }
+    iterator begin()  {
+        return iterator(_rend.next);
+    }
+    iterator last()  {
+        return iterator(_end.prev);
+    }
+    void push_back(const T& obj, BinaryFunction func) {
+        auto t = _end.prev;
+        arr[func].val = obj;
+        arr[func].prev = t;
+        arr[func].next = &_end;
+        arr[func].is_valid = true;
+        t->next = &arr[func];
+        _end.prev = &arr[func];
+    }
+    void pop_back() {
+        auto t = _end.prev->prev;
+        _end.prev = t;
+        _end.prev->is_valid = false;
+        t->next = _end.prev;
+    }
+    iterator find(BinaryFunction func) {
+        if (arr[func].is_valid) {
+            return iterator(&arr[func]);
+        } else {
+            return end();
+        }
+    }
+    void erase(iterator begin, iterator end) {
+        for (auto it = begin; it != end; ++it) {
+            it.node->is_valid = false;
+        }
+        auto t = begin;
+        --t;
+        end.node->prev = t.node;
+        t.node->next = end.node;
+    }
+};
+
+namespace std {
+    template<class T, int VariableCount>
+    typename MyStack<T, VariableCount>::iterator 
+    prev(typename MyStack<T, VariableCount>::iterator it) {
+        auto t = it--;
+        return t;
+    }
+    template<class T, int VariableCount>
+    MyStack<T, VariableCount>::iterator next(typename MyStack<T, VariableCount>::iterator it) {
+        auto t = it++;
+        return t;
+    }
+}
 
 class VerticalPrint {
     vector<stringstream> arr;
     vector<char> filler;
-    int base_add = 0;
+    size_t base_add = 0;
+    ostream& const os;
 public:
-    int addhline() {
+    VerticalPrint() : os(cout) {}
+    VerticalPrint(ostream &os) : os(os) {}
+
+    size_t addhline() {
         filler.push_back(' ');
         arr.emplace_back();
         for (int i = 0; i < base_add; i++) {
@@ -62,7 +177,12 @@ public:
 
     void print() {
         for (const auto& str : arr) {
-            cout << str.str() << endl;
+            const auto& s = str.str();
+            for (int j = 0; j < s.size(); j++) {
+                os << s[j];
+            }
+            os << endl;
+            //cout << str.str() << endl;
         }
         arr.clear();
     }
@@ -72,6 +192,14 @@ public:
 
 template<int VariableCount>
 class BinaryFuncTree {
+
+private:
+    template<class T>
+    struct container_wrapper;
+    struct FunctionNode;
+    using iterator = typename container_wrapper<FunctionNode>::iterator;
+
+
     template<class T>
     struct container_wrapper {
     private:
@@ -96,8 +224,11 @@ class BinaryFuncTree {
             iterator operator-(int a) const noexcept  {
                 return iterator{ index - a };
             }
-            bool operator==(const iterator &it) const noexcept {
+            bool operator==(const iterator& it) const noexcept {
                 return index == it.index;
+            }
+            bool operator!=(const iterator& it) const noexcept {
+                return index != it.index;
             }
             operator bool() const noexcept {
                 return arr != 0 && index >= 0 && index < arr->size();
@@ -119,19 +250,13 @@ class BinaryFuncTree {
 
     };
 
+    
 
-private:
-    template<int VariableCount>
-    struct FunctionNode;
-    typedef uint64_t BinaryFunction;
-    using iterator = typename container_wrapper<FunctionNode<VariableCount>>::iterator;
-
-    container_wrapper<FunctionNode<VariableCount>> alloc_arr;
+    container_wrapper<FunctionNode> alloc_arr;
 public:
     int counter = 0;
 private:
 
-    template<int VariableCount>
     struct FunctionNode {
         enum struct Origin {
             UNION,
@@ -148,7 +273,7 @@ private:
         FunctionNode(BinaryFunction func,  Origin origin) :
             func(func), origin(origin) {
         }
-        friend ostream& operator<<(ostream& os, const FunctionNode<VariableCount>& node) {
+        friend ostream& operator<<(ostream& os, const FunctionNode& node) {
             os << ((node.origin == Origin::UNION) ? 'U' : 'I');
             for (int i = (1 << VariableCount) - 1; i >= 0; i--) {
                 os << (int(node.func >> i) & 1);
@@ -157,13 +282,13 @@ private:
         }
     };
 
-    iterator _alloc(BinaryFunction func, iterator parent, FunctionNode<VariableCount>::Origin origin) {
+    iterator _alloc(BinaryFunction func, iterator parent, FunctionNode::Origin origin) {
         auto it = alloc_arr.alloc(func, parent, origin);
         parent->childs.push_back(it);
         return it;
     }
 
-    iterator _alloc(BinaryFunction func,  FunctionNode<VariableCount>::Origin origin) {
+    iterator _alloc(BinaryFunction func,  FunctionNode::Origin origin) {
         return alloc_arr.alloc(func, origin);
     }
 
@@ -186,64 +311,62 @@ private:
         return mask;
     }
 
-    bool _tryInvertion(iterator& end, BinaryFunction value) {
+    bool _tryInvertion(MyStack<iterator, VariableCount>& stack, BinaryFunction value) {
         BinaryFunction val = (~value) & get_mask();
-        if (find(end, val) == 0) {
-            end = _alloc(val, end, FunctionNode<VariableCount>::Origin::INVERTION);
+        if (stack.find(val) == stack.end()) {
+            auto t = _alloc(val, *stack.last(), FunctionNode::Origin::INVERTION);
+            stack.push_back(t, t->func);
             return true;
         } else {
             return false;
         }
 
     }
-    bool _tryUnion(iterator& end, BinaryFunction left, BinaryFunction right) {
+    bool _tryUnion(MyStack<iterator, VariableCount>& stack, BinaryFunction left, BinaryFunction right) {
         BinaryFunction val = left | right;
-        if (find(end, val) == 0) {
-            end = _alloc(val, end, FunctionNode<VariableCount>::Origin::UNION);
+        if (stack.find(val) == stack.end()) {
+            auto t = _alloc(val, *stack.last(), FunctionNode::Origin::UNION);
+            stack.push_back(t, t->func);
             return true;
         } else {
             return false;
         }
     }
 
-    void _union_all(list<iterator>& stack,
-                    const typename list<iterator>::iterator& unionBegin) {
-        for (auto it = unionBegin; it != stack.end(); it++) {
-            for (auto it2 = std::next(it); it2 != stack.end(); it2++) {
-                auto end = stack.back();
-                if (_tryUnion(end, (*it)->func, (*it2)->func)) {
-                    stack.push_back(end);
-                }
+    void _union_all(MyStack<iterator, VariableCount>& stack,
+                    const typename MyStack<iterator, VariableCount>::iterator& unionBegin) {
+        for (auto it = unionBegin; it != stack.end(); ++it) {
+            auto it2 = it;
+            ++it2;
+            for (; it2 != stack.end(); ++it2) {
+                _tryUnion(stack, (*it)->func, (*it2)->func);
             }
         }
     }
-    void _union_last(list<iterator>& stack,
-                    const typename list<iterator>::iterator& unionBegin) {
-        auto& val = stack.back();
-        auto end = std::prev(stack.end());
-        for (auto it = unionBegin; it != end; it++) {
-            auto end = stack.back();
-            if (_tryUnion(end, (*it)->func, val->func)) {
-                stack.push_back(end);
-            }
+    void _union_last(MyStack<iterator, VariableCount>& stack,
+                    const typename MyStack<iterator, VariableCount>::iterator& unionBegin) {
+        auto& val = *stack.last();
+        auto end = stack.last();
+        for (auto it = unionBegin; it != end; ++it) {
+            _tryUnion(stack, (*it)->func, val->func);
         }
     }
 
 
-    void _generateBinFuncTree(list<iterator> &stack,
-                              typename list<iterator>::iterator invertionBegin) {
+    void _generateBinFuncTree(MyStack<iterator, VariableCount> &stack,
+                              typename MyStack<iterator, VariableCount>::iterator invertionBegin) {
         counter++;
-        if (counter % 1000 == 0) {
+        if (counter % 100000 == 0) {
             cout << '@' << counter << endl;
         }
-        auto old_end = std::prev(stack.end());
-        for (auto head = invertionBegin; head != stack.end(); head++) {
-            auto temp = stack.back();
-            if (_tryInvertion(temp, (*head)->func)) {
-                stack.push_back(temp);
+        auto old_end = stack.last();
+        for (auto head = invertionBegin; head != stack.end(); ++head) {
+            if (_tryInvertion(stack, (*head)->func)) {
                 _union_last(stack, stack.begin());
                 _generateBinFuncTree(stack, head);
-                stack.erase(std::next(old_end), stack.end());
+                auto t = old_end;
+                ++t;
+                stack.erase(t, stack.end());
             }
         }
 
@@ -253,13 +376,13 @@ public:
     iterator tree_root;
     void generateBinFuncTree() {
         constexpr int N = VariableCount;
-        list<iterator> stack;
+        MyStack<iterator, VariableCount> stack;
 
-        auto root = _alloc(0, FunctionNode<VariableCount>::Origin::UNION);
+        auto root = _alloc(0, FunctionNode::Origin::UNION);
         auto head = root;
-        stack.push_back(head);
-        head = _alloc((~0) & get_mask(), head, FunctionNode<VariableCount>::Origin::UNION);
-        stack.push_back(head);
+        stack.push_back(head, head->func);
+        head = _alloc((~0) & get_mask(), head, FunctionNode::Origin::UNION);
+        stack.push_back(head, head->func);
 
 
         for (int i = 0; i < N; i++) {
@@ -269,8 +392,8 @@ public:
                     func = func | (BinaryFunction(1) << j);
                 }
             }
-            head = _alloc(func, head, FunctionNode<VariableCount>::Origin::UNION);
-            stack.push_back(head);
+            head = _alloc(func, head, FunctionNode::Origin::UNION);
+            stack.push_back(head, head->func);
         }
         _union_all(stack, stack.begin());
 
@@ -279,7 +402,9 @@ public:
     }
 
     void printBinFuncTree() {
-        VerticalPrint vp;
+        ofstream fout;
+        fout.open("result.txt", ios::out);
+        VerticalPrint vp(fout);
         list<pair<iterator, size_t>> stack;
 
         auto head = tree_root;
@@ -322,7 +447,7 @@ public:
             }
         }
         vp.print();
-
+        fout.close();
 
         /*stack.push_back(make_pair(node, 0));
 
@@ -369,7 +494,7 @@ struct pointer {
 
 };
 int main() {
-    BinaryFuncTree<2> bft;
+    BinaryFuncTree<3> bft;
     bft.generateBinFuncTree();
     bft.printBinFuncTree();
     cout << bft.counter << endl;
