@@ -136,138 +136,6 @@ FunctionNode<VariableCount>* generateBinFuncTree() {
     return root;
 }
 
-
-template<int VariableCount>
-class BinaryFuncTree {
-public:
-    typedef uint64_t BinaryFunction;
-
-    template<int VariableCount>
-    struct FunctionNode {
-        enum struct Origin {
-            UNION,
-            INVERTION
-        };
-        BinaryFunction func;
-        FunctionNode* parent;
-        Origin origin;
-        vector<FunctionNode*> childs;
-        FunctionNode(BinaryFunction func, FunctionNode* parent, Origin origin) :
-            func(func), parent(parent), origin(origin) {
-            if (parent) {
-                parent->childs.push_back(this);
-            }
-        }
-        friend ostream& operator<<(ostream& os, const FunctionNode<VariableCount>& node) {
-            os << ((node.origin == Origin::UNION) ? 'U' : 'I');
-            for (int i = (1 << VariableCount) - 1; i >= 0; i--) {
-                os << (int(node.func >> i) & 1);
-            }
-            return os;
-        }
-    };
-
-private:
-    vector<FunctionNode<VariableCount>> alloc_arr;
-    int counter = 0;
-
-    FunctionNode<VariableCount>* find(FunctionNode<VariableCount>* end, BinaryFunction func) {
-        while (end) {
-            if (end->func == func) {
-                return end;
-            }
-            end = end->parent;
-        }
-        return 0;
-    }
-
-    BinaryFunction get_mask() {
-        BinaryFunction mask = 0;
-        for (int i = 0; i < 1 << VariableCount; i++) {
-            mask <<= 1;
-            mask |= 1;
-        }
-        return mask;
-    }
-
-    bool _tryInvertion(FunctionNode<VariableCount>*& end, BinaryFunction value) {
-        BinaryFunction val = (~value) & get_mask();
-        if (find(end, val) == 0) {
-            end = &alloc_arr.emplace_back(val, end, FunctionNode<VariableCount>::Origin::INVERTION);
-            return true;
-        } else {
-            return false;
-        }
-
-    }
-    bool _tryUnion(FunctionNode<VariableCount>*& end, BinaryFunction left, BinaryFunction right) {
-        BinaryFunction val = left | right;
-        if (find(end, val) == 0) {
-            end = &alloc_arr.emplace_back(val, end, FunctionNode<VariableCount>::Origin::UNION);
-            return true;
-        } else {
-            return false;
-        }
-    }
-    void _generateBinFuncTree(FunctionNode<VariableCount>* unionBegin,
-                              FunctionNode<VariableCount>* invertionBegin,
-                              FunctionNode<VariableCount>* end) {
-        counter++;
-        if (counter % 10 == 0) {
-            cout << '@' << counter << endl;
-        }
-        list<FunctionNode<VariableCount>*> stack;
-        for (auto head = end; head != unionBegin; head = head->parent) {
-            stack.push_front(head);
-        }
-        stack.push_front(unionBegin);
-        for (auto head = stack.begin(); head != stack.end(); head++) {
-            auto head2 = head;
-            head2++;
-            for (; head2 != stack.end(); head2++) {
-                if (_tryUnion(end, (*head)->func, (*head2)->func)) {
-                    stack.push_back(end);
-                }
-            }
-        }
-        auto head = stack.begin();
-        while (*head != invertionBegin) {
-            head++;
-        }
-        for (; head != stack.end(); head++) {
-            auto temp = end;
-            if (_tryInvertion(temp, (*head)->func)) {
-                _generateBinFuncTree(unionBegin, *head, temp);
-            }
-        }
-
-    }
-
-public:
-
-    FunctionNode<VariableCount>* generateBinFuncTree() {
-        constexpr int N = VariableCount;
-        FunctionNode<VariableCount>* root = &alloc_arr.emplace_back(0, nullptr, FunctionNode<VariableCount>::Origin::UNION);
-        auto head = root;
-        head = &alloc_arr.emplace_back((~0) & get_mask(), head, FunctionNode<VariableCount>::Origin::UNION);
-
-
-        for (int i = 0; i < N; i++) {
-            BinaryFunction func = 0;
-            for (int j = 0; j < 1 << N; j++) {
-                if (j & (1 << i)) {
-                    func = func | (BinaryFunction(1) << j);
-                }
-            }
-            head = &alloc_arr.emplace_back(func, head, FunctionNode<VariableCount>::Origin::UNION);
-        }
-        //_generateBinFuncTree(root, root, head);
-
-
-        return root;
-    }
-};
-
 class VerticalPrint {
     vector<stringstream> arr;
     vector<char> filler;
@@ -417,9 +285,8 @@ void testVerticalPrint() {
 
 int main() {
 
-    BinaryFuncTree<2> bft;
-    auto tree = bft.generateBinFuncTree();
-    //auto tree = generateBinFuncTree<3>();
+    
+    auto tree = generateBinFuncTree<2>();
     printBinFuncTree(tree);
     return 0;
 }
