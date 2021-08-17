@@ -345,21 +345,29 @@ public:
 };
 
 class BufferedOstream {
-    FILE* file;
-    string buf;
+    ostream& os;
+    uint8_t *buf;
+    int size = 0;
     const int max_size;
 public:
-    BufferedOstream(FILE* file, int max_size) : file(file), max_size(max_size) {
-        buf.reserve(max_size);
+    BufferedOstream(ostream& os, int max_size) : os(os), max_size(max_size) {
+        buf = new uint8_t[max_size];
     }
-
-    void write(const string &str) {
-        if (str.size() + buf.size() > max_size) {
-            fwrite(buf.data(), 1, buf.size(), file);
-            buf.clear();
+    ~BufferedOstream() {
+        delete[] buf;
+    }
+    void write(uint8_t *data, size_t size) {
+        if (size + this->size > max_size) {
+            os.write(reinterpret_cast<const char*>(buf), this->size);
+            os.write(reinterpret_cast<const char*>(data), size);
+            this->size = 0;
         } else {
-            buf += str;
+            memcpy_s(buf + this->size, max_size - this->size, data, size);
+            this->size += size;
         }
+    }
+    void fflush() {
+        os.write(reinterpret_cast<const char*>(buf), size);
     }
 };
 
@@ -449,23 +457,38 @@ private:
             _tryUnion(stack, (*it)->func, val->func);
         }
     }
+    template<class T>
+    size_t _set_to_buf(uint8_t* data, size_t size, const T& obj) {
+        if (size < sizeof(obj)) {
+            return 0;
+        } else {
+            memcpy_s(data, size, &obj, sizeof(obj));
+            return sizeof(obj);
+        }
+    }
+    template<class T, class ...Args>
+    size_t _set_to_buf(uint8_t* data, size_t size, const T& obj, const Args&... args) {
+        size_t len = _set_to_buf(data, size, obj);
+        len += _set_to_buf(data + len, size - len, args...);
+        return len;
+    }
 
     void _save_node_data_and_free_childs(iterator node) {
         //cout << "delete " << node->id << endl;
-        char buf[3000] = { 0 };
+        uint8_t buf[3000];
         int id = node->id;
         int pid = node->parent ? node->parent->id : -1;
 
-        int len = snprintf(buf, sizeof(buf), "@ %d %d %d %d\n", node->id, int(node->func), pid, int(node->origin));
+
+        int len = _set_to_buf(buf, sizeof(buf), "\xBE\xAF\x00\x00", node->id, int(node->func), pid, int(node->origin));
 
         for (auto& it : node->childs) {
             //cout << " " << it->id;
-            len += snprintf(buf + len, sizeof(buf) - len, "%d ", it->id);
+            len += _set_to_buf(buf + len, sizeof(buf) - len, it->id);
             functionPool.free(it);
         }
-        len += snprintf(buf + len, sizeof(buf) - len, "\n");
 
-        os.write(string(buf));
+        os.write(buf, len);
     }
     void _generateBinFuncTree(MyStack<iterator, VariableCount>& functionStack) {
         std::list<typename MyStack<iterator, VariableCount>::iterator> depthStack;
@@ -476,7 +499,7 @@ private:
         unsigned int counter = 0;
         while (true) {
             counter++;
-            if (counter % 2000000 == 0) {
+            if (counter % 10000000 == 0) {
                 cout << '@' << counter_all << " " << counter_inv << " " << counter_inv / float(counter_all) << endl;
             }
             if (*cur == functionStack.end()) {
@@ -520,8 +543,8 @@ public:
     int counter_inv = 0;
     BufferedOstream os;
     bool free_asp;
-    BinaryFuncTree2() : os(stdout, 10000), free_asp(false) {}
-    BinaryFuncTree2(FILE* file, int buffer_size = 10000) : os(file, buffer_size), free_asp(true) {}
+    BinaryFuncTree2() : os(cout, 10000), free_asp(false) {}
+    BinaryFuncTree2(ostream& os, int buffer_size = 10000) : os(os, buffer_size), free_asp(true) {}
     iterator tree_root = iterator();
     void generateBinFuncTree() {
         constexpr int N = VariableCount;
@@ -555,6 +578,7 @@ public:
             }
         }
         tree_root = root;
+        os.fflush();
     }
 
     void printBinFuncTree() {
@@ -609,11 +633,13 @@ public:
 
 
 int main() {
-    FILE* file;
-    fopen_s(&file, "log.txt", "w");
-    BinaryFuncTree2<3> bft(file, 1000000);
+    
+    std::ios::sync_with_stdio(false); 
+    cin.tie(NULL);
+    ofstream fout("log.bin", std::ios_base::out | ios::binary);
+    BinaryFuncTree2<3> bft(fout, 10000000);
     bft.generateBinFuncTree();
-    fclose(file);
+    fout.close();
     //bft.printBinFuncTree();
     return 0;
 }
