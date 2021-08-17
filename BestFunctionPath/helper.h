@@ -3,11 +3,20 @@
 #include <sstream>
 #include <cinttypes>
 #include <vector>
+#include <list>
 
 using namespace std;
 
+/*
+* Can have as many digits as needed
+*/
 typedef uint64_t BinaryFunction;
 
+/*
+* Optimized stack. We can have up to 2^2^VariableCount functions. For low 
+* counts we can just have an array of all the functions and use to answer
+* the question: do we already have this function in our stack?
+*/
 template<class T, int VariableCount>
 class MyStack {
 private:
@@ -120,6 +129,9 @@ namespace std {
     }
 }
 
+/*
+* Fancy printing of tree
+*/
 class VerticalPrint {
     vector<stringstream> arr;
     vector<char> filler;
@@ -206,3 +218,58 @@ void testVerticalPrint() {
     vp.add(2, "What??!!");
     vp.print();
 }
+
+
+/*
+* Fast object allocation
+*/
+template<class T>
+class ObjectPool {
+public:
+    std::list<T*> resources;
+public:
+    template<class ...Args>
+    T* alloc(Args ...args) {
+        if (resources.empty()) {
+            return new T(args...);
+        } else {
+            T* res = resources.back();
+            resources.pop_back();
+            new (res) T(args...);
+            return res;
+        }
+    }
+    void free(T* obj) {
+        resources.push_back(obj);
+        obj->~T();
+    }
+};
+/*
+* Buffering saving to disk to maximize speed
+*/
+class BufferedOstream {
+    ostream& os;
+    uint8_t* buf;
+    int size = 0;
+    const int max_size;
+public:
+    BufferedOstream(ostream& os, int max_size) : os(os), max_size(max_size) {
+        buf = new uint8_t[max_size];
+    }
+    ~BufferedOstream() {
+        delete[] buf;
+    }
+    void write(uint8_t* data, size_t size) {
+        if (size + this->size > max_size) {
+            os.write(reinterpret_cast<const char*>(buf), this->size);
+            os.write(reinterpret_cast<const char*>(data), size);
+            this->size = 0;
+        } else {
+            memcpy_s(buf + this->size, max_size - this->size, data, size);
+            this->size += size;
+        }
+    }
+    void fflush() {
+        os.write(reinterpret_cast<const char*>(buf), size);
+    }
+};
